@@ -79,7 +79,7 @@ createAppKit({
     name: "Assetra",
     description:
       "Assetra — on-chain portfolio intelligence",
-    url: "http://localhost:3000",
+    url: "https://assetra-phi.vercel.app",
     icons: [],
   },
 
