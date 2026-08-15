@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
-import { SwapKit } from "@circle-fin/swap-kit";
-import { createViemAdapterFromProvider } from "@circle-fin/adapter-viem-v2";
-
-const kit = new SwapKit();
 
 const ALLOWED_TOKENS = ["USDC", "EURC"] as const;
 
 type Token = (typeof ALLOWED_TOKENS)[number];
 
-function isAllowedToken(token: string): token is Token {
-  return ALLOWED_TOKENS.includes(token as Token);
+function isAllowedToken(token: unknown): token is Token {
+  return (
+    typeof token === "string" &&
+    ALLOWED_TOKENS.includes(token as Token)
+  );
 }
 
 export async function POST(req: Request) {
@@ -24,7 +23,16 @@ export async function POST(req: Request) {
       action = "estimate",
     } = body;
 
-    if (!tokenIn || !tokenOut || !amountIn || !walletAddress) {
+    // ---------------------------------------------
+    // BASIC VALIDATION
+    // ---------------------------------------------
+
+    if (
+      !tokenIn ||
+      !tokenOut ||
+      !amountIn ||
+      !walletAddress
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -34,6 +42,10 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // ---------------------------------------------
+    // TOKEN VALIDATION
+    // ---------------------------------------------
 
     if (
       !isAllowedToken(tokenIn) ||
@@ -48,6 +60,10 @@ export async function POST(req: Request) {
       );
     }
 
+    // ---------------------------------------------
+    // SAME TOKEN CHECK
+    // ---------------------------------------------
+
     if (tokenIn === tokenOut) {
       return NextResponse.json(
         {
@@ -57,6 +73,10 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // ---------------------------------------------
+    // AMOUNT VALIDATION
+    // ---------------------------------------------
 
     const numericAmount = Number(amountIn);
 
@@ -73,47 +93,49 @@ export async function POST(req: Request) {
       );
     }
 
-    const kitKey = process.env.KIT_KEY;
+    // ---------------------------------------------
+    // WALLET ADDRESS VALIDATION
+    // ---------------------------------------------
 
-    if (!kitKey) {
+    if (
+      typeof walletAddress !== "string" ||
+      !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)
+    ) {
       return NextResponse.json(
         {
           success: false,
-          error: "KIT_KEY is missing",
+          error: "Invalid wallet address",
         },
-        { status: 500 }
+        { status: 400 }
       );
     }
 
-    /*
-     * IMPORTANT:
-     *
-     * This API route should NOT create a Circle Wallets adapter.
-     *
-     * MetaMask / injected wallet swaps use the Viem adapter
-     * in the client where the wallet provider exists.
-     *
-     * Therefore this server route is used only as a
-     * configuration/validation endpoint and does not try
-     * to execute the user's wallet transaction.
-     */
+    // ---------------------------------------------
+    // RETURN SWAP CONFIG
+    // ---------------------------------------------
 
     return NextResponse.json({
       success: true,
+
       action,
+
       walletAddress,
+
       tokenIn,
+
       tokenOut,
+
       amountIn: String(amountIn),
 
       config: {
         chain: "Arc_Testnet",
-        kitKeyConfigured: true,
         supportedTokens: ALLOWED_TOKENS,
+        slippageBps: 100,
+        allowanceStrategy: "permit",
       },
 
       message:
-        "Arc Testnet swap configuration is valid. Use the connected wallet's Viem adapter for quote and execution.",
+        "Arc Testnet swap configuration is valid. Quote and execution are handled by the connected wallet on the client.",
     });
   } catch (error) {
     console.error("Circle swap API error:", error);

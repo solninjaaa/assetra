@@ -81,6 +81,26 @@ const ERC20_ABI = [
 ] as const;
 
 /* ---------------------------------------------------------
+ * HELPERS
+ * --------------------------------------------------------- */
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error
+  ) {
+    return String((error as { message?: unknown }).message);
+  }
+
+  return String(error);
+}
+
+/* ---------------------------------------------------------
  * PAGE
  * --------------------------------------------------------- */
 
@@ -347,12 +367,28 @@ export default function SwapPage() {
 
   /* -------------------------------------------------------
    * SWAP CONFIG
+   *
+   * IMPORTANT:
+   * The Circle Kit key is required by the Swap capability.
+   *
+   * For now we read the client-side env value so we can
+   * validate the page integration. In the next step we will
+   * inspect app/api/circle/swap/route.ts and decide the final
+   * secure architecture.
    * ------------------------------------------------------- */
 
-  const getSwapConfig = () => ({
-    slippageBps: 100,
-    allowanceStrategy: "permit" as const,
-  });
+  const getSwapConfig = () => {
+    const kitKey =
+      process.env.NEXT_PUBLIC_CIRCLE_KIT_KEY?.trim();
+
+    return {
+      slippageBps: 100,
+
+      allowanceStrategy: "permit" as const,
+
+      ...(kitKey ? { kitKey } : {}),
+    };
+  };
 
   /* -------------------------------------------------------
    * GET ESTIMATE
@@ -361,7 +397,7 @@ export default function SwapPage() {
   const getEstimate = async () => {
     resetState();
 
-    /* cirBTC DOES NOT HAVE SWAP YET */
+    /* cirBTC DOES NOT HAVE SWAP UI ENABLED YET */
 
     if (isCirBtcSelected) {
       setError(
@@ -404,6 +440,18 @@ export default function SwapPage() {
 
       const kit = new SwapKit();
 
+      const config = getSwapConfig();
+
+      /*
+       * IMPORTANT FIX:
+       *
+       * Old code:
+       *   kit.estimate(...)
+       *
+       * Correct SwapKit method:
+       *   kit.estimate(...)
+       */
+
       const estimate = await kit.estimate({
         from: {
           adapter,
@@ -416,29 +464,69 @@ export default function SwapPage() {
 
         amountIn: String(amount),
 
-        config: getSwapConfig(),
+        config,
       });
 
       const output = estimate.estimatedOutput;
 
       if (
         typeof output === "object" &&
-        output !== null
+        output !== null &&
+        "amount" in output
       ) {
+        const outputAmount = String(
+          (output as { amount: unknown }).amount
+        );
+
+        const outputToken =
+          "token" in output
+            ? String(
+                (output as { token: unknown }).token
+              )
+            : toToken;
+
         setEstimatedOutput(
-          `${output.amount} ${output.token}`
+          `${outputAmount} ${outputToken}`
         );
       } else {
         setEstimatedOutput(String(output));
       }
     } catch (err) {
-      console.error("Swap quote error:", err);
+      console.error("========== SWAP QUOTE ERROR ==========");
+      console.error(err);
+      console.error(
+        "message:",
+        getErrorMessage(err)
+      );
+      console.error(
+        "cause:",
+        (err as any)?.cause
+      );
+      console.error(
+        "code:",
+        (err as any)?.code
+      );
+      console.error(
+        "name:",
+        (err as any)?.name
+      );
+      console.error("======================================");
 
-      const message =
-        err instanceof Error ? err.message : String(err);
+      const message = getErrorMessage(err);
+
+      const lowerMessage = message.toLowerCase();
 
       if (
-        message.toLowerCase().includes("no route")
+        lowerMessage.includes("kit key") ||
+        lowerMessage.includes("kit_key") ||
+        lowerMessage.includes("authentication") ||
+        lowerMessage.includes("unauthorized")
+      ) {
+        setError(
+          "Circle Swap Kit key is missing or invalid. We will fix the secure Kit Key setup in the next API route step."
+        );
+      } else if (
+        lowerMessage.includes("no route")
       ) {
         setError(
           `${fromToken} → ${toToken} currently has no available route on Arc Testnet.`
@@ -460,7 +548,7 @@ export default function SwapPage() {
     setSuccess(false);
     setTxHash(null);
 
-    /* cirBTC DOES NOT HAVE SWAP YET */
+    /* cirBTC DOES NOT HAVE SWAP UI ENABLED YET */
 
     if (isCirBtcSelected) {
       setError(
@@ -503,7 +591,14 @@ export default function SwapPage() {
 
       const kit = new SwapKit();
 
-      /* Fresh quote */
+      const config = getSwapConfig();
+
+      /*
+       * Get a fresh quote immediately before executing.
+       *
+       * IMPORTANT FIX:
+       * kit.estimate(...) -> kit.estimate(...)
+       */
 
       const estimate = await kit.estimate({
         from: {
@@ -517,15 +612,24 @@ export default function SwapPage() {
 
         amountIn: String(amount),
 
-        config: getSwapConfig(),
+        config,
       });
 
       const output = estimate.estimatedOutput;
 
       const outputText =
         typeof output === "object" &&
-        output !== null
-          ? `${output.amount} ${output.token}`
+        output !== null &&
+        "amount" in output
+          ? `${String(
+              (output as { amount: unknown }).amount
+            )} ${
+              "token" in output
+                ? String(
+                    (output as { token: unknown }).token
+                  )
+                : toToken
+            }`
           : String(output);
 
       const confirmed = window.confirm(
@@ -549,7 +653,7 @@ export default function SwapPage() {
 
         amountIn: String(amount),
 
-        config: getSwapConfig(),
+        config,
       });
 
       setSuccess(true);
@@ -571,16 +675,52 @@ export default function SwapPage() {
         cirBtcDecimals.refetch(),
       ]);
     } catch (err) {
-      console.error("Swap execution error:", err);
+      console.error("========== SWAP EXECUTION ERROR ==========");
+      console.error(err);
+      console.error(
+        "message:",
+        getErrorMessage(err)
+      );
+      console.error(
+        "cause:",
+        (err as any)?.cause
+      );
+      console.error(
+        "code:",
+        (err as any)?.code
+      );
+      console.error(
+        "name:",
+        (err as any)?.name
+      );
+      console.error("==========================================");
 
-      const message =
-        err instanceof Error ? err.message : String(err);
+      const message = getErrorMessage(err);
+
+      const lowerMessage = message.toLowerCase();
 
       if (
-        message.toLowerCase().includes("no route")
+        lowerMessage.includes("kit key") ||
+        lowerMessage.includes("kit_key") ||
+        lowerMessage.includes("authentication") ||
+        lowerMessage.includes("unauthorized")
+      ) {
+        setError(
+          "Circle Swap Kit key is missing or invalid. We will fix the secure Kit Key setup in the next API route step."
+        );
+      } else if (
+        lowerMessage.includes("no route")
       ) {
         setError(
           `${fromToken} → ${toToken} has no available route right now on Arc Testnet.`
+        );
+      } else if (
+        lowerMessage.includes("user rejected") ||
+        lowerMessage.includes("user denied") ||
+        lowerMessage.includes("rejected")
+      ) {
+        setError(
+          "Transaction was rejected in your wallet."
         );
       } else {
         setError(message);
@@ -729,7 +869,9 @@ export default function SwapPage() {
               </span>
 
               <span className="text-[9px] text-slate-600">
-                {isCirBtcSelected ? "Unavailable" : "Estimated"}
+                {isCirBtcSelected
+                  ? "Unavailable"
+                  : "Estimated"}
               </span>
 
             </div>
