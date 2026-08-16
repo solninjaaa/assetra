@@ -894,8 +894,7 @@ export default function Dashboard() {
         break;
 
       case "Swap":
-        goTo("/swap");
-        break;
+        return;
 
       case "Escrow":
         goTo("/escrow");
@@ -1052,26 +1051,41 @@ export default function Dashboard() {
           </button>
 
           <nav className="flex-1 space-y-1 px-3 py-5">
-            {navItems.map(
-              (item) => (
+            {navItems.map((item) => {
+              const isSwap =
+                item === "Swap";
+
+              return (
                 <button
                   key={item}
-                  onClick={() =>
-                    handleNav(item)
-                  }
+                  onClick={() => {
+                    if (isSwap) {
+                      return;
+                    }
+
+                    handleNav(item);
+                  }}
+                  disabled={isSwap}
                   className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-xs transition ${
-                    item ===
-                    "Dashboard"
+                    item === "Dashboard"
                       ? "bg-violet-600/20 text-white"
+                      : isSwap
+                      ? "cursor-not-allowed text-slate-600"
                       : "text-slate-500 hover:bg-white/[0.04] hover:text-white"
                   }`}
                 >
-                  <span>
+                  <span className="flex-1 text-left">
                     {item}
                   </span>
+
+                  {isSwap && (
+                    <span className="rounded-md border border-violet-500/20 bg-violet-500/10 px-1.5 py-0.5 text-[7px] font-medium tracking-wide text-violet-400">
+                      COMING SOON
+                    </span>
+                  )}
                 </button>
-              )
-            )}
+              );
+            })}
           </nav>
         </aside>
 
@@ -1399,12 +1413,19 @@ export default function Dashboard() {
                       const ActionIcon =
                         Icon;
 
+                      const isSwap =
+                        label === "Swap";
+
                       return (
                         <button
                           key={
                             label as string
                           }
+                          disabled={isSwap}
                           onClick={() => {
+                            if (isSwap) {
+                              return;
+                            }
 
                             if (
                               label ===
@@ -1423,30 +1444,44 @@ export default function Dashboard() {
                                 "/receive"
                               );
                             }
-
-                            if (
-                              label ===
-                              "Swap"
-                            ) {
-                              goTo(
-                                "/swap"
-                              );
-                            }
-
                           }}
-                          className="flex flex-col items-center gap-2 text-slate-500 transition hover:text-white"
+                          className={`group flex flex-col items-center gap-2 transition ${
+                            isSwap
+                              ? "cursor-not-allowed text-slate-700"
+                              : "text-slate-500 hover:text-white"
+                          }`}
                         >
 
-                          <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/[0.07] bg-white/[0.02]">
+                          <span
+                            className={`relative flex h-10 w-10 items-center justify-center rounded-lg border ${
+                              isSwap
+                                ? "border-violet-500/10 bg-violet-500/[0.03]"
+                                : "border-white/[0.07] bg-white/[0.02]"
+                            }`}
+                          >
 
                             <ActionIcon
                               size={16}
                             />
 
+                            {isSwap && (
+                              <span className="absolute -right-3 -top-2 rounded-md border border-violet-500/20 bg-[#0b1020] px-1.5 py-0.5 text-[6px] font-medium tracking-wide text-violet-400">
+                                SOON
+                              </span>
+                            )}
+
                           </span>
 
-                          <span className="text-[9px]">
-                            {label as string}
+                          <span className="flex items-center gap-1 text-[9px]">
+                            {
+                              label as string
+                            }
+
+                            {isSwap && (
+                              <span className="text-[7px] text-violet-500">
+                                •
+                              </span>
+                            )}
                           </span>
 
                         </button>
