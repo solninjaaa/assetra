@@ -2,64 +2,97 @@
 
 import { useMemo, useState } from "react";
 import {
-  AlertCircle,
   ArrowDown,
   ArrowLeft,
-  CheckCircle2,
   ChevronDown,
   Loader2,
   RefreshCw,
   ShieldCheck,
   Wallet,
   Zap,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
-import { useAccount, useReadContract } from "wagmi";
+
+import {
+  useAccount,
+  useReadContract,
+  useWalletClient,
+} from "wagmi";
+
+import { createViemAdapterFromProvider } from "@circle-fin/adapter-viem-v2";
+import { SwapKit } from "@circle-fin/swap-kit";
 import { formatUnits } from "viem";
+
+/* ---------------------------------------------------------
+ * TOKENS
+ * --------------------------------------------------------- */
 
 const TOKENS = ["USDC", "EURC", "cirBTC"] as const;
 
 type Token = (typeof TOKENS)[number];
 
+/* ---------------------------------------------------------
+ * ARC TESTNET TOKEN ADDRESSES
+ * --------------------------------------------------------- */
+
 const TOKEN_ADDRESSES: Record<Token, `0x${string}`> = {
   USDC: "0x3600000000000000000000000000000000000000",
+
   EURC: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+
   cirBTC: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
 };
+
+/* ---------------------------------------------------------
+ * ERC20 ABI
+ * --------------------------------------------------------- */
 
 const ERC20_ABI = [
   {
     type: "function",
     name: "balanceOf",
     stateMutability: "view",
-    inputs: [{ name: "account", type: "address" }],
-    outputs: [{ name: "", type: "uint256" }],
+    inputs: [
+      {
+        name: "account",
+        type: "address",
+      },
+    ],
+    outputs: [
+      {
+        name: "",
+        type: "uint256",
+      },
+    ],
   },
   {
     type: "function",
     name: "decimals",
     stateMutability: "view",
     inputs: [],
-    outputs: [{ name: "", type: "uint8" }],
+    outputs: [
+      {
+        name: "",
+        type: "uint8",
+      },
+    ],
   },
 ] as const;
 
-type ApiResponse = {
-  success?: boolean;
-  error?: string;
-  message?: string;
-  estimatedOutput?: string;
-  txHash?: string;
-  quote?: {
-    amountOut?: string;
-    estimatedOutput?: string;
-  };
-};
+/* ---------------------------------------------------------
+ * PAGE
+ * --------------------------------------------------------- */
 
 export default function SwapPage() {
   const { address, isConnected } = useAccount();
 
+  const { data: walletClient } = useWalletClient();
+
   const [fromToken, setFromToken] = useState<Token>("USDC");
+
   const [toToken, setToToken] = useState<Token>("EURC");
+
   const [amount, setAmount] = useState("");
 
   const [estimatedOutput, setEstimatedOutput] = useState<string | null>(
@@ -67,20 +100,35 @@ export default function SwapPage() {
   );
 
   const [loadingEstimate, setLoadingEstimate] = useState(false);
+
   const [loadingSwap, setLoadingSwap] = useState(false);
 
   const [success, setSuccess] = useState(false);
+
   const [txHash, setTxHash] = useState<string | null>(null);
+
   const [error, setError] = useState("");
+
+  /* -------------------------------------------------------
+   * CIRBTC CHECK
+   * ------------------------------------------------------- */
 
   const isCirBtcSelected =
     fromToken === "cirBTC" || toToken === "cirBTC";
 
+  /* -------------------------------------------------------
+   * USDC BALANCE
+   * ------------------------------------------------------- */
+
   const usdcBalance = useReadContract({
     address: TOKEN_ADDRESSES.USDC,
+
     abi: ERC20_ABI,
+
     functionName: "balanceOf",
+
     args: address ? [address] : undefined,
+
     query: {
       enabled: Boolean(address),
     },
@@ -88,15 +136,29 @@ export default function SwapPage() {
 
   const usdcDecimals = useReadContract({
     address: TOKEN_ADDRESSES.USDC,
+
     abi: ERC20_ABI,
+
     functionName: "decimals",
+
+    query: {
+      enabled: true,
+    },
   });
+
+  /* -------------------------------------------------------
+   * EURC BALANCE
+   * ------------------------------------------------------- */
 
   const eurcBalance = useReadContract({
     address: TOKEN_ADDRESSES.EURC,
+
     abi: ERC20_ABI,
+
     functionName: "balanceOf",
+
     args: address ? [address] : undefined,
+
     query: {
       enabled: Boolean(address),
     },
@@ -104,15 +166,29 @@ export default function SwapPage() {
 
   const eurcDecimals = useReadContract({
     address: TOKEN_ADDRESSES.EURC,
+
     abi: ERC20_ABI,
+
     functionName: "decimals",
+
+    query: {
+      enabled: true,
+    },
   });
+
+  /* -------------------------------------------------------
+   * CIRBTC BALANCE
+   * ------------------------------------------------------- */
 
   const cirBtcBalance = useReadContract({
     address: TOKEN_ADDRESSES.cirBTC,
+
     abi: ERC20_ABI,
+
     functionName: "balanceOf",
+
     args: address ? [address] : undefined,
+
     query: {
       enabled: Boolean(address),
     },
@@ -120,29 +196,53 @@ export default function SwapPage() {
 
   const cirBtcDecimals = useReadContract({
     address: TOKEN_ADDRESSES.cirBTC,
+
     abi: ERC20_ABI,
+
     functionName: "decimals",
+
+    query: {
+      enabled: true,
+    },
   });
 
+  /* -------------------------------------------------------
+   * NORMALIZED BALANCES
+   * ------------------------------------------------------- */
+
   const balances = useMemo(() => {
+    let usdc = "0";
+    let eurc = "0";
+    let cirBTC = "0";
+
+    if (
+      usdcBalance.data !== undefined &&
+      usdcDecimals.data !== undefined
+    ) {
+      usdc = formatUnits(usdcBalance.data, usdcDecimals.data);
+    }
+
+    if (
+      eurcBalance.data !== undefined &&
+      eurcDecimals.data !== undefined
+    ) {
+      eurc = formatUnits(eurcBalance.data, eurcDecimals.data);
+    }
+
+    if (
+      cirBtcBalance.data !== undefined &&
+      cirBtcDecimals.data !== undefined
+    ) {
+      cirBTC = formatUnits(
+        cirBtcBalance.data,
+        cirBtcDecimals.data
+      );
+    }
+
     return {
-      USDC:
-        usdcBalance.data !== undefined &&
-        usdcDecimals.data !== undefined
-          ? formatUnits(usdcBalance.data, usdcDecimals.data)
-          : "0",
-
-      EURC:
-        eurcBalance.data !== undefined &&
-        eurcDecimals.data !== undefined
-          ? formatUnits(eurcBalance.data, eurcDecimals.data)
-          : "0",
-
-      cirBTC:
-        cirBtcBalance.data !== undefined &&
-        cirBtcDecimals.data !== undefined
-          ? formatUnits(cirBtcBalance.data, cirBtcDecimals.data)
-          : "0",
+      USDC: usdc,
+      EURC: eurc,
+      cirBTC,
     };
   }, [
     usdcBalance.data,
@@ -154,7 +254,12 @@ export default function SwapPage() {
   ]);
 
   const currentFromBalance = balances[fromToken];
+
   const currentToBalance = balances[toToken];
+
+  /* -------------------------------------------------------
+   * RESET
+   * ------------------------------------------------------- */
 
   const resetState = () => {
     setEstimatedOutput(null);
@@ -162,6 +267,10 @@ export default function SwapPage() {
     setSuccess(false);
     setTxHash(null);
   };
+
+  /* -------------------------------------------------------
+   * TOKEN CHANGE
+   * ------------------------------------------------------- */
 
   const changeFromToken = (token: Token) => {
     if (token === toToken) {
@@ -183,127 +292,175 @@ export default function SwapPage() {
     resetState();
   };
 
+  /* -------------------------------------------------------
+   * SWITCH TOKENS
+   * ------------------------------------------------------- */
+
   const switchTokens = () => {
     const oldFrom = fromToken;
 
     setFromToken(toToken);
     setToToken(oldFrom);
+
     setAmount("");
     resetState();
   };
 
+  /* -------------------------------------------------------
+   * MAX
+   * ------------------------------------------------------- */
+
   const setMaxAmount = () => {
-    if (Number(currentFromBalance) > 0) {
-      setAmount(currentFromBalance);
-      resetState();
+    if (
+      !currentFromBalance ||
+      Number(currentFromBalance) <= 0
+    ) {
+      return;
     }
+
+    setAmount(currentFromBalance);
+    resetState();
   };
 
-  const validateSwap = () => {
-    if (!isConnected || !address) {
-      throw new Error("Connect your wallet first.");
+  /* -------------------------------------------------------
+   * CIRCLE ADAPTER
+   * ------------------------------------------------------- */
+
+  const getAdapter = async () => {
+    if (!walletClient) {
+      throw new Error(
+        "Wallet client not available. Please reconnect your wallet."
+      );
     }
 
-    if (!amount || Number(amount) <= 0) {
-      throw new Error("Enter a valid amount.");
-    }
+    const provider = {
+      request: walletClient.request,
+    };
 
-    if (fromToken === toToken) {
-      throw new Error("Choose two different tokens.");
-    }
-
-    if (Number(amount) > Number(currentFromBalance)) {
-      throw new Error(`Insufficient ${fromToken} balance.`);
-    }
-  };
-
-  const callSwapApi = async (
-    action: "estimate" | "swap"
-  ): Promise<ApiResponse> => {
-    validateSwap();
-
-    const response = await fetch("/api/circle/swap", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        tokenIn: fromToken,
-        tokenOut: toToken,
-        amountIn: amount,
-        walletAddress: address,
-        action,
-      }),
+    return createViemAdapterFromProvider({
+      provider:
+        provider as Parameters<
+          typeof createViemAdapterFromProvider
+        >[0]["provider"],
     });
-
-    const text = await response.text();
-
-    let data: ApiResponse;
-
-    try {
-      data = text ? JSON.parse(text) : {};
-    } catch {
-      throw new Error(
-        `Swap API returned an invalid response (${response.status}).`
-      );
-    }
-
-    if (!response.ok || !data.success) {
-      throw new Error(
-        data.error ||
-          data.message ||
-          `Swap request failed (${response.status}).`
-      );
-    }
-
-    return data;
   };
+
+  /* -------------------------------------------------------
+   * SWAP CONFIG
+   * ------------------------------------------------------- */
+
+  const getSwapConfig = () => ({
+    slippageBps: 100,
+    allowanceStrategy: "permit" as const,
+  });
+
+  /* -------------------------------------------------------
+   * GET ESTIMATE
+   * ------------------------------------------------------- */
 
   const getEstimate = async () => {
     resetState();
+
+    /* cirBTC DOES NOT HAVE SWAP YET */
 
     if (isCirBtcSelected) {
       setError(
         "Coming soon — cirBTC swaps are not available yet."
       );
+      return;
+    }
+
+    if (!isConnected || !address) {
+      setError("Connect your wallet first.");
+      return;
+    }
+
+    if (!walletClient) {
+      setError(
+        "Wallet is not ready. Please reconnect your wallet."
+      );
+      return;
+    }
+
+    if (!amount || Number(amount) <= 0) {
+      setError("Enter a valid amount.");
+      return;
+    }
+
+    if (fromToken === toToken) {
+      setError("Choose different tokens.");
+      return;
+    }
+
+    if (Number(amount) > Number(currentFromBalance)) {
+      setError(`Insufficient ${fromToken} balance.`);
       return;
     }
 
     try {
       setLoadingEstimate(true);
 
-      const data = await callSwapApi("estimate");
+      const adapter = await getAdapter();
 
-      const amountOut =
-        data.quote?.amountOut ||
-        data.quote?.estimatedOutput ||
-        data.estimatedOutput;
+      const kit = new SwapKit();
 
-      if (amountOut) {
-        setEstimatedOutput(`${amountOut} ${toToken}`);
-      } else {
-        setError(
-          data.message ||
-            "No swap route is currently available for this pair."
+      const estimate = await kit.estimate({
+        from: {
+          adapter,
+          chain: "Arc_Testnet" as const,
+        },
+
+        tokenIn: fromToken,
+
+        tokenOut: toToken,
+
+        amountIn: String(amount),
+
+        config: getSwapConfig(),
+      });
+
+      const output = estimate.estimatedOutput;
+
+      if (
+        typeof output === "object" &&
+        output !== null
+      ) {
+        setEstimatedOutput(
+          `${output.amount} ${output.token}`
         );
+      } else {
+        setEstimatedOutput(String(output));
       }
     } catch (err) {
       console.error("Swap quote error:", err);
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to get swap quote."
-      );
+      const message =
+        err instanceof Error ? err.message : String(err);
+
+      if (
+        message.toLowerCase().includes("no route")
+      ) {
+        setError(
+          `${fromToken} → ${toToken} currently has no available route on Arc Testnet.`
+        );
+      } else {
+        setError(message);
+      }
     } finally {
       setLoadingEstimate(false);
     }
   };
 
+  /* -------------------------------------------------------
+   * EXECUTE SWAP
+   * ------------------------------------------------------- */
+
   const executeSwap = async () => {
     setError("");
     setSuccess(false);
     setTxHash(null);
+
+    /* cirBTC DOES NOT HAVE SWAP YET */
 
     if (isCirBtcSelected) {
       setError(
@@ -312,49 +469,139 @@ export default function SwapPage() {
       return;
     }
 
+    if (!isConnected || !address) {
+      setError("Connect your wallet first.");
+      return;
+    }
+
+    if (!walletClient) {
+      setError(
+        "Wallet is not ready. Please reconnect your wallet."
+      );
+      return;
+    }
+
+    if (!amount || Number(amount) <= 0) {
+      setError("Enter a valid amount.");
+      return;
+    }
+
+    if (fromToken === toToken) {
+      setError("Choose different tokens.");
+      return;
+    }
+
+    if (Number(amount) > Number(currentFromBalance)) {
+      setError(`Insufficient ${fromToken} balance.`);
+      return;
+    }
+
     try {
       setLoadingSwap(true);
 
-      const data = await callSwapApi("swap");
+      const adapter = await getAdapter();
 
-      const amountOut =
-        data.quote?.amountOut ||
-        data.quote?.estimatedOutput ||
-        data.estimatedOutput;
+      const kit = new SwapKit();
 
-      if (amountOut) {
-        setEstimatedOutput(`${amountOut} ${toToken}`);
+      /* Fresh quote */
+
+      const estimate = await kit.estimate({
+        from: {
+          adapter,
+          chain: "Arc_Testnet" as const,
+        },
+
+        tokenIn: fromToken,
+
+        tokenOut: toToken,
+
+        amountIn: String(amount),
+
+        config: getSwapConfig(),
+      });
+
+      const output = estimate.estimatedOutput;
+
+      const outputText =
+        typeof output === "object" &&
+        output !== null
+          ? `${output.amount} ${output.token}`
+          : String(output);
+
+      const confirmed = window.confirm(
+        `Swap ${amount} ${fromToken} → approximately ${outputText}?\n\nYour connected wallet will ask you to approve the transaction.`
+      );
+
+      if (!confirmed) {
+        setLoadingSwap(false);
+        return;
       }
 
-      if (data.txHash) {
-        setTxHash(data.txHash);
-      }
+      const result = await kit.swap({
+        from: {
+          adapter,
+          chain: "Arc_Testnet" as const,
+        },
+
+        tokenIn: fromToken,
+
+        tokenOut: toToken,
+
+        amountIn: String(amount),
+
+        config: getSwapConfig(),
+      });
 
       setSuccess(true);
 
+      setTxHash(result?.txHash || null);
+
+      if (result?.amountOut) {
+        setEstimatedOutput(
+          `${result.amountOut} ${toToken}`
+        );
+      }
+
       await Promise.all([
         usdcBalance.refetch(),
+        usdcDecimals.refetch(),
         eurcBalance.refetch(),
+        eurcDecimals.refetch(),
         cirBtcBalance.refetch(),
+        cirBtcDecimals.refetch(),
       ]);
     } catch (err) {
       console.error("Swap execution error:", err);
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Swap execution failed."
-      );
+      const message =
+        err instanceof Error ? err.message : String(err);
+
+      if (
+        message.toLowerCase().includes("no route")
+      ) {
+        setError(
+          `${fromToken} → ${toToken} has no available route right now on Arc Testnet.`
+        );
+      } else {
+        setError(message);
+      }
     } finally {
       setLoadingSwap(false);
     }
   };
 
+  /* -------------------------------------------------------
+   * UI
+   * ------------------------------------------------------- */
+
   return (
     <main className="min-h-screen bg-[#03070d] text-white">
       <div className="mx-auto w-full max-w-[620px] px-4 py-8 lg:py-10">
 
+        {/* HEADER */}
+
         <div className="mb-7 flex items-start gap-4">
+
           <button
             onClick={() => window.history.back()}
             className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.08] bg-[#07101a] text-slate-400 transition hover:text-white"
@@ -371,15 +618,19 @@ export default function SwapPage() {
               Swap USDC and EURC directly on Arc Testnet.
             </p>
           </div>
+
         </div>
+
+        {/* CARD */}
 
         <div className="rounded-2xl border border-white/[0.08] bg-[#07101a] p-5 lg:p-6">
 
-          {/* PAY */}
+          {/* FROM */}
 
           <div className="rounded-xl border border-white/[0.07] bg-[#030910] p-4">
 
             <div className="flex items-center justify-between">
+
               <span className="text-[10px] text-slate-500">
                 You Pay
               </span>
@@ -390,6 +641,7 @@ export default function SwapPage() {
               >
                 MAX
               </button>
+
             </div>
 
             <div className="mt-3 flex items-center justify-between gap-4">
@@ -412,7 +664,9 @@ export default function SwapPage() {
                 <select
                   value={fromToken}
                   onChange={(e) =>
-                    changeFromToken(e.target.value as Token)
+                    changeFromToken(
+                      e.target.value as Token
+                    )
                   }
                   className="cursor-pointer appearance-none rounded-xl border border-white/[0.08] bg-[#07101a] py-3 pl-3 pr-9 text-xs font-semibold outline-none"
                 >
@@ -433,6 +687,7 @@ export default function SwapPage() {
                 />
 
               </div>
+
             </div>
 
             <div className="mt-4 flex items-center justify-between">
@@ -442,7 +697,8 @@ export default function SwapPage() {
               </span>
 
               <span className="text-[10px] font-medium text-slate-400">
-                {Number(currentFromBalance).toFixed(6)} {fromToken}
+                {Number(currentFromBalance).toFixed(6)}{" "}
+                {fromToken}
               </span>
 
             </div>
@@ -462,7 +718,7 @@ export default function SwapPage() {
 
           </div>
 
-          {/* RECEIVE */}
+          {/* TO */}
 
           <div className="rounded-xl border border-white/[0.07] bg-[#030910] p-4">
 
@@ -473,9 +729,7 @@ export default function SwapPage() {
               </span>
 
               <span className="text-[9px] text-slate-600">
-                {isCirBtcSelected
-                  ? "Unavailable"
-                  : "Estimated"}
+                {isCirBtcSelected ? "Unavailable" : "Estimated"}
               </span>
 
             </div>
@@ -501,7 +755,9 @@ export default function SwapPage() {
                 <select
                   value={toToken}
                   onChange={(e) =>
-                    changeToToken(e.target.value as Token)
+                    changeToToken(
+                      e.target.value as Token
+                    )
                   }
                   className="cursor-pointer appearance-none rounded-xl border border-white/[0.08] bg-[#07101a] py-3 pl-3 pr-9 text-xs font-semibold outline-none"
                 >
@@ -532,14 +788,15 @@ export default function SwapPage() {
               </span>
 
               <span className="text-[10px] font-medium text-slate-400">
-                {Number(currentToBalance).toFixed(6)} {toToken}
+                {Number(currentToBalance).toFixed(6)}{" "}
+                {toToken}
               </span>
 
             </div>
 
           </div>
 
-          {/* CIRBTC */}
+          {/* CIRBTC COMING SOON */}
 
           {isCirBtcSelected && (
             <div className="mt-5 rounded-xl border border-violet-500/20 bg-violet-500/[0.06] p-5">
@@ -573,7 +830,7 @@ export default function SwapPage() {
             </div>
           )}
 
-          {/* ESTIMATE DETAILS */}
+          {/* QUOTE */}
 
           {estimatedOutput && !isCirBtcSelected && (
             <div className="mt-5 rounded-xl border border-white/[0.06] bg-[#030910] p-4">
@@ -597,8 +854,11 @@ export default function SwapPage() {
                 </span>
 
                 <span className="flex items-center gap-2 text-[10px] text-slate-300">
+
                   <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
+
                   Arc Testnet
+
                 </span>
 
               </div>
@@ -628,7 +888,9 @@ export default function SwapPage() {
                 className="mt-0.5 shrink-0"
               />
 
-              <span>{error}</span>
+              <span>
+                {error}
+              </span>
 
             </div>
           )}
@@ -681,7 +943,10 @@ export default function SwapPage() {
 
                 <p className="mt-0.5 text-[9px] text-slate-600">
                   {address
-                    ? `${address.slice(0, 6)}...${address.slice(-4)}`
+                    ? `${address.slice(
+                        0,
+                        6
+                      )}...${address.slice(-4)}`
                     : "Connect wallet"}
                 </p>
 
@@ -695,7 +960,7 @@ export default function SwapPage() {
 
           </div>
 
-          {/* ACTION BUTTON */}
+          {/* BUTTON */}
 
           {isCirBtcSelected ? (
 
@@ -704,7 +969,9 @@ export default function SwapPage() {
               className="mt-5 flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-white/[0.06] text-xs font-semibold text-slate-500"
             >
               <Zap size={16} />
+
               Coming Soon
+
             </button>
 
           ) : !estimatedOutput ? (
@@ -713,6 +980,7 @@ export default function SwapPage() {
               onClick={getEstimate}
               disabled={
                 !isConnected ||
+                !walletClient ||
                 !amount ||
                 Number(amount) <= 0 ||
                 loadingEstimate
@@ -726,11 +994,13 @@ export default function SwapPage() {
                     size={16}
                     className="animate-spin"
                   />
+
                   Getting Quote...
                 </>
               ) : (
                 <>
                   <RefreshCw size={16} />
+
                   Get Swap Quote
                 </>
               )}
@@ -751,11 +1021,13 @@ export default function SwapPage() {
                     size={16}
                     className="animate-spin"
                   />
+
                   Executing Swap...
                 </>
               ) : (
                 <>
                   <RefreshCw size={16} />
+
                   Confirm Swap
                 </>
               )}
@@ -780,13 +1052,16 @@ export default function SwapPage() {
               </p>
 
               <p className="mt-1 text-[9px] leading-4 text-slate-500">
-                USDC and EURC swaps are handled through
-                Assetra&apos;s swap API. cirBTC swaps are coming soon.
+                USDC and EURC swaps are routed through
+                Circle&apos;s supported liquidity infrastructure.
+                cirBTC swaps are coming soon.
               </p>
 
             </div>
 
           </div>
+
+          {/* FOOTER */}
 
           <div className="mt-5 flex items-center justify-center gap-2 text-[9px] text-slate-600">
 

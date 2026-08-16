@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import { SwapKit } from "@circle-fin/swap-kit";
+import { createViemAdapterFromProvider } from "@circle-fin/adapter-viem-v2";
+
+const kit = new SwapKit();
 
 const ALLOWED_TOKENS = ["USDC", "EURC"] as const;
 
@@ -32,13 +36,13 @@ export async function POST(req: Request) {
     }
 
     if (
-      !isAllowedToken(String(tokenIn)) ||
-      !isAllowedToken(String(tokenOut))
+      !isAllowedToken(tokenIn) ||
+      !isAllowedToken(tokenOut)
     ) {
       return NextResponse.json(
         {
           success: false,
-          error: "Unsupported swap token",
+          error: "Unsupported Arc Testnet token",
         },
         { status: 400 }
       );
@@ -56,7 +60,10 @@ export async function POST(req: Request) {
 
     const numericAmount = Number(amountIn);
 
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+    if (
+      !Number.isFinite(numericAmount) ||
+      numericAmount <= 0
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -66,43 +73,47 @@ export async function POST(req: Request) {
       );
     }
 
-    if (
-      typeof walletAddress !== "string" ||
-      !/^0x[a-fA-F0-9]{40}$/.test(walletAddress)
-    ) {
+    const kitKey = process.env.KIT_KEY;
+
+    if (!kitKey) {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid wallet address",
+          error: "KIT_KEY is missing",
         },
-        { status: 400 }
+        { status: 500 }
       );
     }
 
+    /*
+     * IMPORTANT:
+     *
+     * This API route should NOT create a Circle Wallets adapter.
+     *
+     * MetaMask / injected wallet swaps use the Viem adapter
+     * in the client where the wallet provider exists.
+     *
+     * Therefore this server route is used only as a
+     * configuration/validation endpoint and does not try
+     * to execute the user's wallet transaction.
+     */
+
     return NextResponse.json({
       success: true,
-
       action,
-
       walletAddress,
-
       tokenIn,
-
       tokenOut,
-
       amountIn: String(amountIn),
 
       config: {
         chain: "Arc_Testnet",
+        kitKeyConfigured: true,
         supportedTokens: ALLOWED_TOKENS,
-
-        privateKeyRequired: false,
-
-        serverWallet: false,
       },
 
       message:
-        "Swap request validated. The connected user's wallet will be used to sign the transaction.",
+        "Arc Testnet swap configuration is valid. Use the connected wallet's Viem adapter for quote and execution.",
     });
   } catch (error) {
     console.error("Circle swap API error:", error);
@@ -113,7 +124,7 @@ export async function POST(req: Request) {
         error:
           error instanceof Error
             ? error.message
-            : "Swap request failed",
+            : "Circle swap failed",
       },
       { status: 500 }
     );
