@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ExternalLink,
   Menu,
+  X,
   Search,
   Send,
   ShieldCheck,
@@ -293,6 +294,8 @@ export default function Dashboard() {
   const { open } = useAppKit();
 
   const router = useRouter();
+
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   /* -------------------------------------------------------
      NATIVE USDC
@@ -972,6 +975,8 @@ export default function Dashboard() {
   const handleNav = (
     item: string
   ) => {
+    setMobileMenuOpen(false);
+
     switch (item) {
       case "Dashboard":
         goTo("/dashboard");
@@ -1135,11 +1140,16 @@ export default function Dashboard() {
             onClick={() => goTo("/")}
             className="flex h-[72px] w-full items-center gap-3 border-b border-white/[0.05] px-5 text-left transition hover:bg-white/[0.03]"
           >
-           <img
-  src="/assetra-logo.png"
-  alt="Assetra"
-  className="h-10 w-10 shrink-0 object-contain"
-/>
+           <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl">
+           <Image
+           src="/assetra-logo.png"
+             alt="Assetra"
+           width={40}
+           height={40}
+           priority
+           className="h-full w-full object-cover"
+            />
+           </div>
             <span className="text-xl font-semibold">
               Assetra
             </span>
@@ -1169,6 +1179,92 @@ export default function Dashboard() {
           </nav>
         </aside>
 
+        {/* MOBILE DRAWER */}
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            <button
+              type="button"
+              aria-label="Close navigation menu"
+              onClick={() => setMobileMenuOpen(false)}
+              className="absolute inset-0 bg-black/70 backdrop-blur-[2px]"
+            />
+
+            <aside className="relative flex h-full w-[280px] max-w-[85vw] flex-col border-r border-white/[0.08] bg-[#040a12] shadow-2xl">
+              <div className="flex h-[72px] items-center justify-between border-b border-white/[0.05] px-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    goTo("/");
+                  }}
+                  className="flex items-center gap-3"
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl">
+                    <Image
+                      src="/assetra-logo.png"
+                      alt="Assetra"
+                      width={36}
+                      height={36}
+                      priority
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                  <span className="text-lg font-semibold">Assetra</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(false)}
+                  aria-label="Close menu"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03] text-slate-400 hover:text-white"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-5">
+                {navItems.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => handleNav(item)}
+                    className={`flex w-full items-center rounded-xl px-4 py-3 text-left text-sm transition ${
+                      item === "Dashboard"
+                        ? "bg-violet-600/20 text-white"
+                        : "text-slate-400 hover:bg-white/[0.04] hover:text-white"
+                    }`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="border-t border-white/[0.05] p-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    handleWallet();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-xl border border-violet-500/20 bg-violet-500/10 px-4 py-3 text-left"
+                >
+                  <Wallet size={17} className="text-violet-400" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-white">
+                      {isConnected && address
+                        ? `${address.slice(0, 6)}...${address.slice(-4)}`
+                        : "Connect Wallet"}
+                    </p>
+                    <p className="mt-0.5 text-[9px] text-slate-500">
+                      Arc Testnet
+                    </p>
+                  </div>
+                </button>
+              </div>
+            </aside>
+          </div>
+        )}
+
         {/* MAIN */}
 
         <section className="min-w-0 flex-1">
@@ -1177,10 +1273,14 @@ export default function Dashboard() {
 
           <header className="flex h-[72px] items-center gap-4 border-b border-white/[0.06] px-4 lg:px-6">
 
-            <Menu
-              size={20}
-              className="text-slate-500 lg:hidden"
-            />
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Open navigation menu"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-[#080f18] text-slate-400 transition hover:text-white lg:hidden"
+            >
+              <Menu size={19} />
+            </button>
 
             <div className="relative max-w-[600px] flex-1">
 
@@ -1209,7 +1309,16 @@ export default function Dashboard() {
               }`}
             >
 
-              <div className="h-7 w-7 rounded-full bg-gradient-to-br from-pink-400 via-purple-500 to-indigo-500" />
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full">
+  <Image
+    src="/assetra-logo.png"
+    alt="Assetra"
+    width={28}
+    height={28}
+    priority
+    className="h-full w-full object-cover"
+  />
+</div>
 
               {isConnected &&
               address
@@ -1384,7 +1493,7 @@ export default function Dashboard() {
 
                 ) : (
 
-                  <div className="flex items-center gap-6 py-4">
+                  <div className="flex flex-col items-center gap-5 py-4 sm:flex-row">
 
                     <AllocationChart
                       allocation={
@@ -1603,7 +1712,7 @@ export default function Dashboard() {
 
                     <>
 
-                      <div className="grid grid-cols-[1fr_auto_auto] items-center gap-4 border-b border-white/[0.04] py-3 text-[10px]">
+                      <div className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-white/[0.04] py-3 text-[10px] sm:grid-cols-[1fr_auto_auto] sm:gap-4">
 
                         <span className="text-slate-500">
                           Asset
@@ -1613,7 +1722,7 @@ export default function Dashboard() {
                           Balance
                         </span>
 
-                        <span className="text-slate-500">
+                        <span className="hidden text-slate-500 sm:block">
                           Value
                         </span>
 
@@ -1656,7 +1765,7 @@ export default function Dashboard() {
                             return (
                               <div
                                 key={`${symbol}-${index}`}
-                                className="grid grid-cols-[1fr_auto_auto] items-center gap-4 border-b border-white/[0.04] py-4 last:border-0"
+                                className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-white/[0.04] py-4 last:border-0 sm:grid-cols-[1fr_auto_auto] sm:gap-4"
                               >
 
                                 <div className="flex items-center gap-3">
@@ -1701,7 +1810,7 @@ export default function Dashboard() {
 
                                 </div>
 
-                                <div className="min-w-[65px] text-right">
+                                <div className="hidden min-w-[65px] text-right sm:block">
 
                                   <p className="text-[11px] font-medium text-slate-200">
                                     $
